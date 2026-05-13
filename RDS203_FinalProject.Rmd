@@ -1,0 +1,616 @@
+---
+title: "RDS203_FinalProject"
+author: "Tzu-Hsi (Cece) Jen"
+date: "`r Sys.Date()`"
+output:
+  html_document: 
+    toc: true
+    toc_depth: 3
+    toc_float: true
+  pdf_document: default
+---
+
+```{r}
+lib <- c("dplyr", "tidyr", "ggplot2", "gghighlight", "ggrepel", "gt")
+
+for(pkg in lib){
+  if(!require(pkg, character.only = TRUE)){
+    install.packages(pkg)
+    library(pkg, character.only = TRUE)
+  }
+}
+```
+
+## 1. Result Overview
+
+```{r}
+res <- read.csv("./FinalProject_Code/output/results.csv")
+head(res, 3)
+```
+
+### 1.1 Average performance
+
+```{r}
+# Compute average 
+avg_df <- res|>
+  group_by(strategy)|>
+  summarise(cost_avg = mean(cost),
+            qaly_avg = mean(qaly),
+            mortalityReduction_avg = mean(mortalityReduction))|>
+  mutate(start_age = as.numeric(sub("S(\\d+)_(\\d+)_F(\\d+)", "\\1", strategy)),
+         stop_age = as.numeric(sub("S(\\d+)_(\\d+)_F(\\d+)", "\\2", strategy)),
+         frequency = as.numeric(sub("S(\\d+)_(\\d+)_F(\\d+)", "\\3", strategy)))|>
+  mutate(frequency = recode(frequency,
+                            "1" = "Annual",
+                            "2" = "Biennial"))
+
+avg_cols <- colnames(avg_df)[grep("_avg$", colnames(avg_df))]
+avg_df <- avg_df|>
+  mutate(across(all_of(avg_cols), ~ round(.x, digits = 2)))
+
+avg_df
+```
+
+### 1.2 Best performance
+
+```{r}
+# Find best value
+cost_best <- avg_df|>
+  slice_min(cost_avg)|>
+  mutate(category = "Lowest costs")
+
+qaly_best <- avg_df|>
+  slice_max(qaly_avg)|>
+  mutate(category = "Highest QALYs")
+
+mortalityReduction_best <- avg_df|>
+  slice_max(mortalityReduction_avg)|>
+  mutate(category = "Greatest CRC mortality reduction")
+
+best_df <- bind_rows(
+  cost_best,
+  qaly_best,
+  mortalityReduction_best
+)
+best_df
+```
+
+```{r}
+best_strategy <- best_df$strategy
+compare_df <- res|>
+  filter(strategy %in% best_strategy)
+
+t.test(cost ~ strategy, data = compare_df)
+t.test(qaly ~ strategy, data = compare_df)
+```
+
+```{r, out.width='50%'}
+best_tbl <- best_df|>
+  select(start_age, stop_age, frequency, category, avg_cols)|>
+  arrange(category)|>
+  
+  gt()|>
+  cols_label(
+    start_age = "Start Age (years)",
+    stop_age = "Stop Age (years)",
+    frequency = "Frequency",
+    category = "Performance Metric",
+    
+    cost_avg = "Average Cost (USD)",
+    qaly_avg = "Average QALYs",
+    mortalityReduction_avg = "Average CRC Mortality Reduction (%)"
+  )|>
+  opt_table_font(font = "Times New Roman")|>
+  tab_style(
+    style = cell_text(
+      weight = "bold",
+      size = px(14),
+      align = "center"
+      ),
+    locations = cells_column_labels()
+  )|>
+  tab_style(
+    style = cell_text(
+      align = "center",
+      size = px(14)
+    ),
+    locations = cells_body()
+  )
+
+
+best_tbl
+gtsave(data = best_tbl, filename = "best_tbl.png", path = "./table")
+```
+
+```{r, out.width='50%'}
+avg_tbl <- avg_df|>
+  select(strategy, start_age, stop_age, frequency, avg_cols)|>
+  gt()|>
+  
+  tab_style(
+    style = cell_fill(color = "lightblue"),
+    locations = cells_body(
+      rows = strategy %in% best_df$strategy)
+  )|>
+  cols_hide(strategy)|>
+  tab_source_note(
+    source_note = md(
+      "Highlighted rows represent best-performing screening strategies across selected outcome measures."
+    )
+  )|>
+  
+  cols_label(
+    start_age = "Start Age (years)",
+    stop_age = "Stop Age (years)",
+    frequency = "Frequency",
+    
+    cost_avg = "Average Cost (USD)",
+    qaly_avg = "Average QALYs",
+    mortalityReduction_avg = "Average Mortality Reduction (%)"
+  )|>
+  
+  opt_table_font(font = "Times New Roman")|>
+  tab_style(
+    style = cell_text(
+      weight = "bold",
+      size = px(14),
+      align = "center"
+      ),
+    locations = cells_column_labels()
+  )|>
+  tab_style(
+    style = cell_text(
+      align = "center",
+      size = px(14),
+    ),
+    locations = cells_body()
+  )
+
+avg_tbl
+gtsave(data = avg_tbl, filename = "avg_tbl.png", path = "./table")
+```
+
+### 1.2 Worst performance
+
+```{r}
+# Find best value
+cost_worst <- avg_df|>
+  slice_max(cost_avg)|>
+  mutate(category = "Highest costs")
+
+qaly_worst <- avg_df|>
+  slice_min(qaly_avg)|>
+  mutate(category = "Lowest QALYs")
+
+mortalityReduction_worst <- avg_df|>
+  slice_min(mortalityReduction_avg)|>
+  mutate(category = "Worst mortality reduction")
+
+worst_df <- bind_rows(
+  cost_worst,
+  qaly_worst,
+  mortalityReduction_worst
+)
+worst_df
+```
+
+```{r, out.width='50%'}
+worst_tbl <- worst_df|>
+  select(start_age, stop_age, frequency, category, avg_cols)|>
+  arrange(start_age)|>
+  gt()|>
+  cols_label(
+    start_age = "Start Age (years)",
+    stop_age = "Stop Age (years)",
+    frequency = "Frequency",
+    
+    category = "Performance Metric",
+    cost_avg = "Average Cost (USD)",
+    qaly_avg = "Average QALYs",
+    mortalityReduction_avg = "Average Mortality Reduction (%)"
+  )|>
+  opt_table_font(font = "Times New Roman")|>
+  tab_style(
+    style = cell_text(
+      weight = "bold",
+      size = px(14),
+      align = "center"
+      ),
+    locations = cells_column_labels()
+  )|>
+  tab_style(
+    style = cell_text(
+      align = "center",
+      size = px(14)
+    ),
+    locations = cells_body()
+  )
+
+
+worst_tbl
+gtsave(data = worst_tbl, filename = "worst_tbl.png", path = "./table")
+```
+
+## 2. Performance Plot
+
+### 2.1 Best strategy
+
+```{r}
+best_label <- best_df|>
+  dplyr::rename("Category" = "category")
+
+ggplot(avg_df, aes(x = qaly_avg, y = cost_avg))+
+  # all points
+  geom_point(colour = "grey", size = 2)+
+  
+  # highlight best points (best_label)
+  geom_point(
+    data = best_label,
+    aes(colour = Category),
+    size = 4)+
+  geom_text_repel(
+    data = best_label,
+    aes(label = strategy, colour = Category),
+    size = 3,
+    show.legend = FALSE,
+    max.overlaps = Inf,
+    fontface = "bold",
+    box.padding = 0.3,
+    point.padding = 0.5,
+    segment.color = "grey50")+
+  
+  scale_x_continuous(expand = expansion(mult = c(0.05, 0.15)))+
+  scale_y_continuous(expand = expansion(mult = c(0.05, 0.15)))+
+  theme_minimal()+
+  labs(
+    x = "QALYs",
+    y = "Cost (USD)"
+  )
+
+ggsave("./pic/bestStrategy.png")
+```
+
+### 2.2 Cost vs QALYs by frequency
+
+```{r}
+ggplot(avg_df, aes(x = qaly_avg, y = cost_avg, colour = factor(frequency)))+
+  geom_point(size = 3)+
+  labs(
+    x = "QALYs",
+    y = "Cost (USD)",
+    colour = "Frequency"
+  )+
+  scale_x_continuous(expand = expansion(mult = c(0.05, 0.15)))+
+  scale_y_continuous(expand = expansion(mult = c(0.05, 0.15)))+
+  theme_minimal()
+
+ggsave("./pic/cost_vs_qaly_byFrequency.png")
+```
+
+### 2.3 Cost vs QALYs by start age
+
+```{r}
+ggplot(avg_df, aes(x = qaly_avg, y = cost_avg, colour = factor(start_age)))+
+  geom_point(size = 3)+
+  labs(
+    x = "QALYs",
+    y = "Cost (USD)",
+    colour = "Start Age (year)"
+  )+
+  scale_x_continuous(expand = expansion(mult = c(0.05, 0.15)))+
+  scale_y_continuous(expand = expansion(mult = c(0.05, 0.15)))+
+  theme_minimal()
+
+ggsave("./pic/cost_vs_qaly_byStartAge.png")
+```
+
+### 2.4 Cost vs QALYs by stop age
+
+```{r}
+ggplot(avg_df, aes(x = qaly_avg, y = cost_avg, colour = factor(stop_age)))+
+  geom_point(size = 3)+
+  labs(
+    x = "QALYs",
+    y = "Cost (USD)",
+    colour = "Stop Age (year)"
+  )+
+  scale_x_continuous(expand = expansion(mult = c(0.05, 0.15)))+
+  scale_y_continuous(expand = expansion(mult = c(0.05, 0.15)))+
+  theme_minimal()
+
+ggsave("./pic/cost_vs_qaly_byStopAge.png")
+```
+
+### 2.5 QALYs by strategy
+
+```{r}
+ggplot(avg_df, aes(x = reorder(strategy, qaly_avg), y = qaly_avg))+
+  geom_col(aes(fill = qaly_avg == max(qaly_avg)))+
+  scale_fill_manual(values = c("steelblue", "#FF6A6A"), guide = "none")+
+  coord_flip(ylim = c(37.0, 38.0))+
+  geom_text(aes(label = round(qaly_avg, 3)), hjust = -0.2, size = 3)+
+  labs(
+    x = "Strategy",
+    y = "QALYs"
+  )+
+  theme_minimal()
+
+ggsave("./pic/qaly_by_strategy.png")
+```
+
+### 2.6 Cost by strategy
+
+```{r}
+ggplot(avg_df, aes(x = reorder(strategy, cost_avg), y = cost_avg))+
+  geom_col(aes(fill = cost_avg == max(cost_avg)))+
+  scale_fill_manual(values = c("steelblue", "#FF6A6A"),
+                    guide = "none")+
+  coord_flip(ylim = c(1400, 2600))+
+  geom_text(aes(label = round(cost_avg, 3)), hjust = -0.2, size = 3)+
+  labs(
+    x = "Strategy",
+    y = "Cost (USD)"
+  )+
+  theme_minimal()
+
+ggsave("./pic/cost_by_strategy.png")
+```
+
+### 2.7 Mortality reduction by strategy
+
+```{r}
+ggplot(avg_df, aes(x = reorder(strategy, mortalityReduction_avg),
+                   y = mortalityReduction_avg))+
+  geom_col(aes(fill = mortalityReduction_avg == max(mortalityReduction_avg)))+
+  scale_fill_manual(values = c("steelblue", "#FF6A6A"),
+                    guide = "none")+
+  coord_flip()+
+  geom_text(aes(label = round(mortalityReduction_avg, 3)), hjust = -0.2, size = 3)+
+  labs(
+    x = "Strategy",
+    y = "CRC Mortality Reduction (%)"
+  )+
+  theme_minimal()
+
+ggsave("./pic/MRreduction_by_strategy.png")
+```
+
+### 2.8 Tradeoff: Cost vs Mortality (+ Frequency & Start Age)
+
+```{r}
+ggplot(avg_df, aes(x = mortalityReduction_avg, y = cost_avg, 
+                   colour = factor(frequency),
+                   shape = factor(start_age)))+
+  
+  geom_point(size = 3)+
+  
+  scale_x_continuous(expand = expansion(mult = c(0.05, 0.15)))+
+  scale_y_continuous(expand = expansion(mult = c(0.05, 0.15)))+
+  
+  coord_cartesian(clip = "off")+
+
+  labs(
+    x = "CRC Mortality Reduction (%)",
+    y = "Cost (USD)",
+    colour = "Frequency",
+    shape = "Start Age (year)"
+  )+
+  theme_minimal()
+
+ggsave("./pic/cost_MR_freq_startAge.png")
+```
+
+### 2.9 Tradeoff: Cost vs Mortality (+ Frequency & Stop Age)
+
+```{r}
+ggplot(avg_df, aes(x = mortalityReduction_avg, y = cost_avg, 
+                   colour = factor(frequency),
+                   shape = factor(stop_age)))+
+  
+  geom_point(size = 3)+
+  
+  scale_x_continuous(expand = expansion(mult = c(0.05, 0.15)))+
+  scale_y_continuous(expand = expansion(mult = c(0.05, 0.15)))+
+  
+  coord_cartesian(clip = "off")+
+
+  labs(
+    x = "CRC Mortality Reduction (%)",
+    y = "Cost (USD)",
+    colour = "Frequency",
+    shape = "Stop Age (year)"
+  )+
+  theme_minimal()
+
+ggsave("./pic/cost_MR_freq_stopAge.png")
+```
+
+### 2.10 Tradeoff: QALYs vs Mortality (+ Frequency & Start Age)
+
+```{r}
+ggplot(avg_df, aes(x = mortalityReduction_avg, y = qaly_avg, 
+                   colour = factor(frequency),
+                   shape = factor(start_age)))+
+  
+  geom_point(size = 3)+
+  
+  scale_x_continuous(expand = expansion(mult = c(0.05, 0.15)))+
+  scale_y_continuous(expand = expansion(mult = c(0.05, 0.15)))+
+  
+  coord_cartesian(clip = "off")+
+
+  labs(
+    x = "CRC Mortality Reduction (%)",
+    y = "QALYs",
+    colour = "Frequency",
+    shape = "Start Age (year)"
+  )+
+  theme_minimal()
+
+ggsave("./pic/qalys_MR_freq_startAge.png")
+```
+
+### 2.11 Tradeoff: QALYs vs Mortality (+ Frequency & Stop Age)
+
+```{r}
+ggplot(avg_df, aes(x = mortalityReduction_avg, y = qaly_avg, 
+                   colour = factor(frequency),
+                   shape = factor(stop_age)))+
+  
+  geom_point(size = 3)+
+
+  scale_x_continuous(expand = expansion(mult = c(0.05, 0.15)))+
+  scale_y_continuous(expand = expansion(mult = c(0.05, 0.15)))+
+  
+  coord_cartesian(clip = "off")+
+
+  labs(
+    x = "CRC Mortality Reduction (%)",
+    y = "QALYs",
+    colour = "Frequency",
+    shape = "Stop Age (year)"
+  )+
+  theme_minimal()
+
+ggsave("./pic/qalys_MR_freq_stopAge.png")
+```
+
+## 3. Calibration Plot
+
+```{r}
+calibration_trace <- read.csv("./FinalProject_Code/output/calibration_trace.csv")
+head(calibration_trace, 3)
+```
+
+```{r}
+ggplot(calibration_trace, aes(x = iteration)) +
+
+  geom_line(
+    aes(
+      y = log(currentError + 1e-10),
+      colour = "Current error"
+    ),
+    alpha = 0.5
+  ) +
+
+  geom_line(
+    aes(
+      y = log(bestError + 1e-10),
+      colour = "Best error"
+    ),
+    linewidth = 1
+  ) +
+
+  scale_colour_manual(
+    values = c(
+      "Current error" = "grey60",
+      "Best error" = "red"
+    )
+  ) +
+
+  labs(
+    x = "Iteration",
+    y = "Log calibration error",
+    colour = NULL
+  ) +
+
+  theme_minimal()
+
+ggsave("./pic/calibration_trace.png")
+```
+
+## 4. Supplementary Table
+
+### 4.1 Model input 
+
+```{r, out.width='50%'}
+input_data <- read.csv("./data/model_input.csv")
+head(input_data, 3)
+
+input_tbl <- input_data|>
+  gt()|>
+  cols_label(
+    Age_group_years = "Age Group (years)",
+    CRC_Incidence_Rate = "CRC Incidence Rate (years)",
+    CRC_Mortality_Rate = "CRC Mortality Rate (years)",
+    All_Cause_Mortality_Rate = "All-Cause Mortality Rate (years)"
+  )|>
+  opt_table_font(font = "Times New Roman")|>
+  tab_style(
+    style = cell_text(
+      weight = "bold",
+      size = px(14),
+      align = "center"
+      ),
+    locations = cells_column_labels()
+  )|>
+  tab_style(
+    style = cell_text(
+      size = px(14),
+      align = "center"
+    ),
+    locations = cells_body()
+  )
+
+input_tbl
+gtsave(data = input_tbl, filename = "input_tbl.png", path = "./table")
+```
+
+### 4.2 Model calibrated parameters
+
+```{r, out.width='50%'}
+calibrated_tbl <- data.frame(
+  Parameter = c(
+    "Target CRC mortality reduction",
+    "Calibrated detection effect",
+    "Model-predicted CRC mortality reduction",
+    "Absolute calibration error",
+    "Optimisation method",
+    "Number of iterations"
+  ),
+  
+  Value = c(
+    0.35,
+    0.836,
+    0.349,
+    0.001,
+    "Simulated annealing",
+    1000
+  )
+)|>
+  gt()|>
+  opt_table_font(font = "Times New Roman")|>
+  tab_style(
+    style = cell_text(
+      weight = "bold",
+      size = px(14),
+      align = "center"
+      ),
+    locations = cells_column_labels()
+  )|>
+  tab_style(
+    style = cell_text(
+      size = px(14)
+    ),
+    locations = cells_body()
+  )|>
+  cols_align(
+    align = "center",
+    columns = Value
+  )
+
+calibrated_tbl
+gtsave(calibrated_tbl, filename = "calibrated_tbl.png", path = "./table")
+```
+
+
+
+
+
+
+
+
+
+
+
+
