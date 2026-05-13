@@ -561,21 +561,23 @@ gtsave(data = input_tbl, filename = "input_tbl.png", path = "./table")
 ```{r, out.width='50%'}
 calibrated_tbl <- data.frame(
   Parameter = c(
-    "Target CRC mortality reduction",
-    "Calibrated detection effect",
-    "Model-predicted CRC mortality reduction",
-    "Absolute calibration error",
     "Optimisation method",
-    "Number of iterations"
+    "Number of iterations",
+    "Calibrated parameter",
+    "Calibrated detection effect",
+    "Target CRC mortality reduction",
+    "Model-predicted CRC mortality reduction",
+    "Absolute calibration error"
   ),
   
   Value = c(
-    0.35,
-    0.836,
-    0.349,
-    0.001,
     "Simulated annealing",
-    1000
+    1000,
+    "Detection effect",
+    0.836,
+    0.35,
+    0.349,
+    0.001
   )
 )|>
   gt()|>
